@@ -6,7 +6,7 @@
 
 #   were gonna need to save blog posts
 
-class Post
+class Post < ActiveRecord::Base
 
   ATTRIBUTES = {
     :id => "INTEGER PRIMARY KEY",
@@ -14,13 +14,33 @@ class Post
     :content => "TEXT",
     :author_name => "TEXT"
   }
+  # the attributes are our introspection points.
 
   ATTRIBUTES.keys.each do |key|
     attr_accessor keys
   end
 
-  @@all = []
-  attr_accessor :id, :title, :content
+  def destroy
+    sql = <<-SQL
+      DELETE FROM #{self.class.table_name} WHERE id = ?
+    SQL
+
+    DB[:conn].execute(sql, self.id)
+  end
+
+  def self.find(id)
+    sql = <<-SQL
+      SELECT * FROM #{self.table_name} WHERE id = ?
+    SQL
+
+    rows = DB[:conn].execute(sql, id)
+    if rows.first
+      self.reify_from_row(rows.first)
+    # reify -- make real - turn array into an object(a post instance)
+    else
+      nil
+    end
+  end
 
   def self.reify_from_row(row)
     self.new.tap do |p|
@@ -97,15 +117,43 @@ class Post
   end
 
 
+  def attribute_values
+    # ["Post Title", "Post Content", "Post Author"] -- want to get this back
+    ATTRIBUTES.keys[1..-1].collect{|attribute_name| self.send(attribute_name)}
+  end
+
+  def self.sql_for_update
+    # "title = ? content = ?" can't actually write title... abstracting.
+    ATTRIBUTES.keys[1..-1].collect{|attribute_name|"#{attribute_name} = ?"}.join(",")
+    # give me all those keys save id, then give me each of those keys as a variable called attribute_name
+    # build a string called attribute name = question mark like title = ?, content = ?,
+    # and then join those individual strings with a comma
+  end
+
   private
     def INSERT
       sql = <<-SQL
         INSERT INTO #{self.class.table_name} (#{self.class.attribute_names_for_insert}) VALUES (#{self.class.question_marks_for_insert})
       SQL
 
-      DB[:conn].execute(sql, self.title, self.content)
+      # DB[:conn].execute(sql, self.title, self.content) -- will become -->
+      DB[:conn].execute(sql, *attribute_values) #<-- there is my splat
+      # calling a method -- three_args(*[1,2,3])
+      # * is called splatting an array - means take all your elements and send them as individual arguments to your method -
+      # very rare- mostly exists in metaprogramming
       self.id = DB[:conn].execute("SELECT last_insert_rowid();").flatten.first
     end
+
+    def update
+      sql = <<-SQL
+        UPDATE posts SET #{self.class.sql_for_update} WHERE id = ?
+      SQL
+
+      # DB[:conn].execute(sql, self.title, self.content, self.id) --- splatting again
+      DB[:conn].execute(sql, *attribute_values, self.id)
+      # splatting my attribute values(3 arguments), then pass in final argument of self.id
+    end
+
   end
 
   # def save
