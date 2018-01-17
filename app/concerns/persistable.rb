@@ -11,10 +11,15 @@ module Persistable
       self::ATTRIBUTES
     end
 
+    # changed to self.attributes because built a reader in the post class.
+
     def table_name
       "#{self.to_s.downcase}s"
     end
 
+
+    Post.create(:title => "Title") #=> #<Post: @id = 1, >
+    
     def create(attributes_hash)
       self.new.tap do |p|
         attributes_hash.each do |attribute_name, attribute_value|
